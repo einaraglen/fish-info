@@ -20,6 +20,8 @@
   },
   "homepage": "https://github.com/einaraglen/fish-info#readme",
   "dependencies": {
+    "@fast-csv/parse": "^4.3.6",
+    "axios": "^1.2.2",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
     "dotenv": "^16.0.3",
