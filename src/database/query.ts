@@ -3,67 +3,102 @@ import getVessel from "../directory/vessels";
 import { z } from "zod";
 import prisma from "./client";
 
-export const addSpecies = async (species: Species[]) => {
-  return await prisma.species.createMany({
-    data: species,
-  });
-};
-
-export const getDocuments = async (imo: string, year: string) => {
-  const vessel = await getOrCreateVessel(imo)
+export const getDocuments = async (imo: string, from: string, to: string) => {
+  const vessel = await getOrCreateVessel(imo);
   const reports = await prisma.document.findMany({
     where: {
       vessel_id: vessel.id,
       sale_date: {
-        lte: new Date(`${year}-01-30`).toISOString(), // "2022-01-30T00:00:00.000Z"
-        gte: new Date(`${year}-01-01`).toISOString(), // "2022-01-15T00:00:00.000Z"
+        lte: new Date(to).toISOString(),
+        gte: new Date(from).toISOString(), 
       },
     },
-    include: {
-        catches: true
-    }
+    orderBy: [
+      {
+        sale_date: "asc"
+      }
+    ]
   });
-
-//   const species = await prisma.species.findMany()
-//   const map = species.reduce<any>((res, curr) => {
-//     const { id } = curr
-//     delete curr.id
-//     res[id] = curr
-//     return res;
-//   }, {})
-
-  return reports
+  return reports;
 };
+
+export const getCatches = async (document_id: string) => {
+  const catches = await prisma.catch.findMany({
+    where: {
+      document_id
+    },
+    orderBy: [
+      {
+        landing_date: "asc"
+      }
+    ]
+  })
+
+  const species = await prisma.species.findMany()
+
+  const map = species.reduce<any>((res, curr) => {
+    const { id } = curr
+    delete curr.id
+    res[id] = curr
+    return res
+  }, {})
+
+  return catches.map((c) => ({ ...c, species: map[c.species_id] }))
+}
+
+
+export const getDatabaseRange = async () => {
+  const range =  await prisma.document.aggregate({
+    _min: {
+      sale_date: true
+    },
+    _max: {
+      sale_date: true
+    }
+  })
+
+  const { _min, _max } = range
+
+  return { min: _min.sale_date, max: _max.sale_date }
+}
 
 export const getOrCreateVessel = async (imo: string) => {
   let vessel = await prisma.vessel.findUnique({
     where: {
-      imo
-    }
-  })
+      imo,
+    },
+  });
 
   if (vessel != null) {
-    return vessel
+    return vessel;
   }
 
-  const res: any = await getVessel(imo)
-  const data = res.data[0]
+  const res: any = await getVessel(imo);
+  const data = res.data[0];
 
-  if (data == null) throw new Error("Vessel does not exist in records")
+  if (data == null) throw new Error("Vessel does not exist in records");
 
-  const { id, imoNumber } = data
+  const { id, imoNumber } = data;
 
   return await prisma.vessel.create({
     data: {
       id,
-      imo: imoNumber
-    }
-  })
-}
+      imo: imoNumber,
+    },
+  });
+};
 
-export const ReportsRequestObject = z.object({
+export const DocumentsRequestObject = z.object({
   vessel: z.string(),
-  year: z.string()
-})
+  from: z.coerce.date(),
+  to: z.coerce.date()
+});
 
-export type ReportRequest = z.infer<typeof ReportsRequestObject>
+export type DocumentsRequest = z.infer<typeof DocumentsRequestObject>;
+
+export const CatchesRequestObject = z.object({
+  document_id: z.string(),
+});
+
+export type CatchesRequest = z.infer<typeof CatchesRequestObject>;
+

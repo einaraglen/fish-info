@@ -3,29 +3,48 @@ import csv from "csv-parser";
 import { Catch, Document, Species } from "@prisma/client";
 import { PrismaClient } from "@prisma/client";
 
-export const readStringToDate = (data: string) => {
-  const [date, month, year] = data.trim().split(".")
-  const actual = new Date(`${month}-${date}-${year}`)
-  if (isNaN(actual.getTime())) console.log("BAD")
-  return actual
+export const readStringToDate = (data: string, line: any) => {
+  if (data == null) {
+    console.log(line)
+    throw new Error("Bad String when parsing Date")
+  } 
+    const [date, month, year] = data.trim().split(".")
+    const actual = new Date(`${month}-${date}-${year}`)
+    return actual
 };
 
 export const readStringToInt = (data: string) => {
+  if (data == null) {
+    throw new Error("Bad String when parsing Int")
+  } 
   const value = parseInt(data);
   return isNaN(value) ? 0 : value;
 };
 
 export const readStringToFloat = (data: string) => {
+  if (data == null) {
+    throw new Error("Bad String when parsing Float")
+  } 
   const value = parseFloat(data.trim().replace(",", "."));
   return isNaN(value) ? 0 : value;
 };
 
+export const readCatchId = (line: any) => {
+
+  return `${line["Dokumentnummer"]}-${line["Linjenummer"]}-${line["Art FAO (kode)"]}`
+}
+
 const readLine = (data: any): { document: Document, catch: any } => {
-  const document: string = data["Dokumentnummer"];
+  const document: string = data["Dokumentnummer"] || "test";
+
+  if (document == null) {
+    throw new Error("Bad Document ID")
+  } 
+
   return {
     document: {
       id: document,
-      sale_date: readStringToDate(data["Dokument salgsdato"]),
+      sale_date: readStringToDate(data["Dokument salgsdato"], data),
       lat: readStringToFloat(data["Lat (hovedområde)"]),
       lon: readStringToFloat(data["Lon (hovedområde)"]),
       eqiupment_type: readStringToInt(data["Redskap (kode)"]),
@@ -35,8 +54,9 @@ const readLine = (data: any): { document: Document, catch: any } => {
       vessel_id: data["Fartøy ID"],
     },
     catch: {
+      id: readCatchId(data),
       document_id: document,
-      landing_date: readStringToDate(data["Landingsdato"]),
+      landing_date: readStringToDate(data["Landingsdato"], data),
       species_id: data["Art FAO (kode)"],
       product_weight: readStringToFloat(data["Bruttovekt"]),
       round_weight: readStringToFloat(data["Rundvekt"]),
@@ -70,18 +90,19 @@ const add = async (results: any[], prisma: PrismaClient) => {
         [new Map(), []]
       );
 
-    const docs = await prisma.document.createMany({
-      data: Array.from(documents, ([key, value]) => value),
-      skipDuplicates: true
-    });
+    // const docs = await prisma.document.createMany({
+    //   data: Array.from(documents, ([key, value]) => value),
+    //   skipDuplicates: true
+    // });
 
-    console.log(`Added ${docs.count} documents`)
+    // // console.log(`Added ${docs.count} documents`)
 
-    const cat = await prisma.catch.createMany({
-      data: catches,
-    });
+    // const cat = await prisma.catch.createMany({
+    //   data: catches,
+    //   skipDuplicates: true
+    // });
 
-    console.log(`Added ${cat.count} catches`)
+    // console.log(`Added ${cat.count} catches`)
 
     cursor += batch;
   }
@@ -98,18 +119,14 @@ const readBatch = async (step: number, round: number) => {
 
     const results: any = [];
 
-    let index = 0;
-
     const start = step * round;
-    const end = step * (round + 1);
 
-    fs.createReadStream(`./assets/fangstdata_2022.csv`)
-      .pipe(csv({ separator: ";" }))
+    fs.createReadStream(`./assets/fangstdata_2020.csv`)
+      .pipe(csv({ separator: ";", skipLines: start }))
       .on("data", (line: any) => {
-        if (index >= start && index < end) {
+        if (results.length < step) {
           results.push(readLine(line));
         }
-        index++;
       })
       .on("end", async () => {
         if (results.length === 0) {

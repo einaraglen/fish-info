@@ -21,7 +21,7 @@ model Document {
 }
 
 model Catch {
-    id String @id @unique @default(uuid())
+    id String @id @unique
     document Document @relation(fields: [document_id], references: [id])
     document_id String
     landing_date DateTime // Landingsdato
