@@ -3,10 +3,11 @@ import express from "express";
 import { version } from "../package.json";
 import dotenv from "dotenv";
 import cors from "cors";
+import { Prisma } from "./database/client";
 
 dotenv.config();
 
-const run = async () => {
+const run = () => {
   const app = express();
   const PORT = process.env.PORT || 5001;
 
@@ -17,6 +18,9 @@ const run = async () => {
   app.listen(PORT, () =>
     console.log(`fish-info@${version} listening to port ${PORT}`)
   );
+
+
+  Prisma()
 };
 
 export default run;
