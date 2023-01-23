@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import cors from "cors";
 import { Prisma } from "./database/client";
 
+import v1 from "./v1/index"
+
 dotenv.config();
 
 const run = () => {
@@ -13,7 +15,7 @@ const run = () => {
 
   app.use(cors({ origin: "*" }));
 
-  app.use("/v1", )
+  app.use("/v1", v1)
 
   app.listen(PORT, () =>
     console.log(`fish-info@${version} listening to port ${PORT}`)

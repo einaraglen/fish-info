@@ -33,3 +33,5 @@ route.get("/catches", async (req, res) => {
         res.status(500).send(e)
     }
 })
+
+export default route;
