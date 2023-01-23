@@ -1,11 +1,11 @@
-import { Document, Species } from "@prisma/client";
 import getVessel from "../directory/vessels";
 import { z } from "zod";
 import prisma from "./client";
+import { CatchesQuery, DocumentsQuery, VesselQuery } from "../v1/models"
 
-export const getDocuments = async (imo: string, from: string, to: string) => {
+export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
   const vessel = await getOrCreateVessel(imo);
-  const reports = await prisma.document.findMany({
+  return await prisma.document.findMany({
     where: {
       vessel_id: vessel.id,
       sale_date: {
@@ -19,31 +19,14 @@ export const getDocuments = async (imo: string, from: string, to: string) => {
       }
     ]
   });
-  return reports;
 };
 
-export const getCatches = async (document_id: string) => {
-  const catches = await prisma.catch.findMany({
+export const getCatches = async ({ document }: CatchesQuery) => {
+  return await prisma.catch.findMany({
     where: {
-      document_id
+      document_id: document
     },
-    orderBy: [
-      {
-        landing_date: "asc"
-      }
-    ]
   })
-
-  const species = await prisma.species.findMany()
-
-  const map = species.reduce<any>((res, curr) => {
-    const { id } = curr
-    delete curr.id
-    res[id] = curr
-    return res
-  }, {})
-
-  return catches.map((c) => ({ ...c, species: map[c.species_id] }))
 }
 
 
@@ -88,17 +71,11 @@ export const getOrCreateVessel = async (imo: string) => {
   });
 };
 
-export const DocumentsRequestObject = z.object({
-  vessel: z.string(),
-  from: z.coerce.date(),
-  to: z.coerce.date()
-});
+export const getVesselByIdentifier = async ({ imo, id }: VesselQuery) => {
+  if (imo == null && id == null) {
+    throw new Error("Query needs either 'imo' of 'id'")
+  }
 
-export type DocumentsRequest = z.infer<typeof DocumentsRequestObject>;
-
-export const CatchesRequestObject = z.object({
-  document_id: z.string(),
-});
-
-export type CatchesRequest = z.infer<typeof CatchesRequestObject>;
-
+  const where = imo ? { imo } : { id }
+  return await prisma.vessel.findUnique({ where })
+}
