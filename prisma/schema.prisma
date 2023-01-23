@@ -16,7 +16,7 @@ model Document {
   lon             Float // Lon (hovedområde)
   type            Type      @relation(fields: [type_id], references: [id])
   type_id         String // Dokumenttype (kode)
-  equpment        Equipment @relation(fields: [eqiupment_id], references: [id])
+  equipment        Equipment @relation(fields: [eqiupment_id], references: [id])
   eqiupment_id    String // Redskap (kode)
   receive_nation  String // Mottakernasjonalitet (kode)
   receive_place   String // Landingskommune

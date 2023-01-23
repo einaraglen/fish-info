@@ -13,6 +13,11 @@ export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
         gte: new Date(from).toISOString(), 
       },
     },
+    include: {
+      type: true,
+      equipment: true,
+      quota: true
+    },
     orderBy: [
       {
         sale_date: "asc"
@@ -26,6 +31,10 @@ export const getCatches = async ({ document }: CatchesQuery) => {
     where: {
       document_id: document
     },
+    include: {
+      species: true,
+      conservation: true
+    }
   })
 }
 
