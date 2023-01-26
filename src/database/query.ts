@@ -8,7 +8,7 @@ export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
   return await prisma.document.findMany({
     where: {
       vessel_id: vessel.id,
-      last_catch_date: {
+      sale_date: {
         lte: new Date(to).toISOString(),
         gte: new Date(from).toISOString(), 
       },
