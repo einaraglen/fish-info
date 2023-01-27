@@ -27,7 +27,7 @@ const run = () => {
     console.log(`fish-info@${version} listening to port ${PORT}`)
   );
 
-
+//https://register.fiskeridir.no/uttrekk/fangstdata_2023.csv.zip
   Prisma()
 };
 

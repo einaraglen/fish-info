@@ -129,7 +129,7 @@ const readFormattedCatches = (batch: number): Promise<Catch[]> => {
   });
 };
 
-export const readFormattedBatches = async () => {
+export const insertFormattedData = async () => {
   let batch = 0;
 
   while (
