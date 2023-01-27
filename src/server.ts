@@ -6,8 +6,14 @@ import cors from "cors";
 import { Prisma } from "./database/client";
 
 import v1 from "./v1/index"
+import { readAndWriteBatches, insertFormattedData } from "./reader/reader";
 
 dotenv.config();
+
+const test = async () => {
+  await readAndWriteBatches("fangstdata_2023.csv")
+  await insertFormattedData()
+}
 
 const run = () => {
   const app = express();

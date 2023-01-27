@@ -1,248 +1,210 @@
 import fs from "fs";
-import csv from "csv-parser";
-import { Catch, Document, Species } from "@prisma/client";
-import { PrismaClient } from "@prisma/client";
+import path from "path";
+import { Catch, Document } from "@prisma/client";
+import { parse, format, CsvFormatterStream } from "fast-csv";
+import { readLine } from "./utils";
+import prisma from "../database/client";
 
-export const readStringToDate = (data: string, line: any) => {
-  if (data == null) {
-    throw new Error("Bad String when parsing Date");
-  }
+const clamp = (value: number) => Math.min(Math.max(value, 0), 100).toFixed(1);
 
-  const [date, month, year] = data.trim().split(".");
-  const actual = new Date(`${month}-${date}-${year}`);
+const BATCH_COUNT = 100000;
+const SECTION_COUNT = 10000;
+const TMP_DIR = "./tmp";
 
-  if (isNaN(actual.getTime())) {
-    // console.log(line)
-    // console.log(date, actual, data, month, year)
-    // console.log("Invalid Date")
-    return undefined
-  }
-
-  return actual;
-};
-
-export const readStringToInt = (data: string) => {
-  if (data == null) {
-    throw new Error("Bad String when parsing Int");
-  }
-  const value = parseInt(data);
-  return isNaN(value) ? 0 : value;
-};
-
-export const readStringToFloat = (data: string) => {
-  if (data == null) {
-    throw new Error("Bad String when parsing Float");
-  }
-  const value = parseFloat(data.trim().replace(",", "."));
-  return isNaN(value) ? 0 : value;
-};
-
-export const readCatchId = (line: any) => {
-  const fao = line["Art FAO (kode)"];
-  return `${line["Dokumentnummer"]}-${line["Linjenummer"]}-${
-    fao == "" ? "UKN" : fao
-  }`;
-};
-
-const readLine = (data: any): { document: Document; catch: Catch } => {
-  const document: string = data["Dokumentnummer"];
-  let species_id = readStringToInt(data["Art - FDIR (kode)"]).toString();
-
-  if (data["Art FAO (kode)"] == "") {
-    console.log("BAD FAO CODE", species_id);
-  }
-
-  if (document == null) {
-    throw new Error(`Bad Document ID ${document}`);
-  }
-
-  return {
-    document: {
-      id: document,
-      lat: readStringToFloat(data["Lat (hovedområde)"]),
-      lon: readStringToFloat(data["Lon (hovedområde)"]),
-      sale_date: readStringToDate(data["Dokument salgsdato"], data),
-      last_catch_date: readStringToDate(data["Siste fangstdato"], data),
-      landing_date: readStringToDate(data["Landingsdato"], data),
-      type_id: data["Dokumenttype (kode)"],
-      eqiupment_id: data["Redskap (kode)"],
-      receive_nation: data["Mottakernasjonalitet (kode)"],
-      receive_place: data["Landingskommune"],
-      quota_id: readStringToInt(data["Kvotetype (kode)"]).toString(),
-      vessel_id: data["Fartøy ID"],
-    },
-    catch: {
-      id: readCatchId(data),
-      document_id: document,
-      species_id,
-      conservation_id: data["Konserveringsmåte (kode)"],
-      product_weight: readStringToFloat(data["Bruttovekt"]),
-      round_weight: readStringToFloat(data["Rundvekt"]),
-    },
-  };
-};
-
-const batch = 10000;
-
-const add = async (results: any[], prisma: PrismaClient) => {
-  let cursor = 0;
-  while (cursor < results.length) {
-    const progress = ((cursor + batch) / results.length) * 100;
-
-    console.log(
-      `Insert Progress ${progress.toFixed(2)}% - from ${cursor} to ${
-        cursor + batch
-      } of ${results.length}`
-    );
-
-    const [documents, catches] = results
-      .slice(cursor, cursor + batch)
-      .reduce<any>(
-        (res, curr) => {
-          if (
-            res[0].get(curr.document.id) == null &&
-            curr.document.id != null
-          ) {
-            res[0].set(curr.document.id, curr.document);
-          }
-          res[1].push(curr.catch);
-          return res;
-        },
-        [new Map(), []]
-      );
-
-    const docs = await prisma.document.createMany({
-      data: Array.from(documents, ([key, value]) => value),
-      skipDuplicates: true,
-    });
-
-    const cat = await prisma.catch.createMany({
-      data: catches,
-      skipDuplicates: true,
-    });
-
-    console.log(`Added ${cat.count} catches + ${docs.count} documents`);
-
-    cursor += batch;
-  }
-
-  return "Complete";
-};
-
-const step = 100000;
-
-const readBatch = async (step: number, round: number) => {
-  return new Promise(async (resolve, reject) => {
-    const prisma = new PrismaClient();
-    await prisma.$connect();
-
-    let index = 0;
-
-    const results: any = [];
-
-    const start = step * round;
-    const end = step * (round + 1);
-
-    fs.createReadStream(`./assets/fangstdata_2019.csv`)
-      .pipe(
-        csv({
-          separator: ";",
-          mapHeaders: ({ header, index }) => header.trim(),
-        })
-      )
-      .on("data", (line: any) => {
-        if (index >= start && index < end) {
-          results.push(readLine(line));
-        }
-        index++;
-      })
-      .on("end", async () => {
-        if (results.length === 0) {
-          reject("End of file");
-        }
-        console.log(`Adding ${results.length} records`);
-        await add(results, prisma);
-        await prisma.$disconnect();
-        resolve("Batch complete");
+const cleanup = () => {
+  fs.readdir(TMP_DIR, (err, files) => {
+    if (err) throw err;
+    for (const file of files) {
+      fs.unlink(path.join(TMP_DIR, file), (err) => {
+        if (err) throw err;
       });
+    }
   });
 };
 
-export const readCatch = async () => {
-  let round = 0;
-  let running = true;
+const insertDocuments = (documents: any[]): Promise<void> => {
+  return new Promise(async (resolve, reject) => {
+    let cursor = 0;
 
-  while (running) {
-    try {
-      console.log(`Reading batch ${round}`);
-      const res = await readBatch(step, round);
-      console.log(res);
-      round++;
-    } catch (e) {
-      console.log(e);
-      running = false;
+    while (cursor < documents.length) {
+      const docs = await prisma.document.createMany({
+        data: documents.slice(cursor, cursor + SECTION_COUNT),
+        skipDuplicates: true,
+      });
+
+      const progress = ((cursor + SECTION_COUNT) / documents.length) * 100;
+
+      console.log(`${clamp(progress)}% | Inserted ${docs.count} documents`);
+
+      cursor += SECTION_COUNT;
     }
+
+    resolve();
+  });
+};
+
+const insertCatches = (catches: any[]): Promise<void> => {
+  return new Promise(async (resolve, reject) => {
+    let cursor = 0;
+
+    while (cursor < catches.length) {
+      const cat = await prisma.catch.createMany({
+        data: catches.slice(cursor, cursor + SECTION_COUNT),
+        skipDuplicates: true,
+      });
+
+      const progress = ((cursor + SECTION_COUNT) / catches.length) * 100;
+
+      console.log(`${clamp(progress)}% | Inserted ${cat.count} catches`);
+
+      cursor += SECTION_COUNT;
+    }
+
+    resolve();
+  });
+};
+
+const formatDocument = (line: any) => {
+  const { last_catch_date, landing_date, lat, lon } = line;
+  delete line.last_catch_date;
+  delete line.landing_date;
+  delete line.lat;
+  delete line.lon;
+
+  const f_lat = isNaN(parseFloat(lat)) ? 0 : parseFloat(lat);
+  const f_lon = isNaN(parseFloat(lon)) ? 0 : parseFloat(lon);
+
+  return {
+    ...line,
+    last_catch_date: new Date(last_catch_date),
+    landing_date: new Date(landing_date),
+    lat: f_lat,
+    lon: f_lon,
+  };
+};
+
+const readFormattedDocuments = (batch: number): Promise<Document[]> => {
+  return new Promise((resolve, reject) => {
+    const documents = new Map();
+
+    const stream = fs.createReadStream(`./tmp/document${batch}.csv`);
+
+    stream
+      .pipe(parse({ headers: true }))
+      .on("data", (line) => {
+        documents.set(line.id, formatDocument(line));
+      })
+      .on("end", () => resolve(Array.from(documents, ([key, value]) => value)));
+  });
+};
+
+const formatCatch = (line: any) => {
+  const { product_weight, round_weight } = line;
+  delete line.product_weight;
+  delete line.round_weight;
+
+  const f_product_weight = isNaN(parseFloat(product_weight))
+    ? 0
+    : parseFloat(product_weight);
+  const f_round_weight = isNaN(parseFloat(round_weight))
+    ? 0
+    : parseFloat(round_weight);
+  return {
+    ...line,
+    product_weight: f_product_weight,
+    round_weight: f_round_weight,
+  };
+};
+
+const readFormattedCatches = (batch: number): Promise<Catch[]> => {
+  return new Promise((resolve, reject) => {
+    const catches: any = [];
+
+    const stream = fs.createReadStream(`./tmp/catch${batch}.csv`);
+
+    stream
+      .pipe(parse({ headers: true }))
+      .on("data", (line) => catches.push(formatCatch(line)))
+      .on("end", () => resolve(catches));
+  });
+};
+
+export const readFormattedBatches = async () => {
+  let batch = 0;
+
+  while (
+    fs.existsSync(`./tmp/document${batch}.csv`) &&
+    fs.existsSync(`./tmp/catch${batch}.csv`)
+  ) {
+    console.log(
+      "\n\x1b[33m##\x1b[0m",
+      `Starting insertion of batch ${batch}`,
+      "\x1b[33m##\x1b[0m\n"
+    );
+
+    const [documents, catches] = await Promise.all([
+      readFormattedDocuments(batch),
+      readFormattedCatches(batch),
+    ]);
+
+    await insertDocuments(documents)
+    await insertCatches(catches)
+
+    batch++;
   }
 
-  process.exit(0);
+  console.log(
+    "\x1b[33m##\x1b[0m",
+    "Completed insertion of dataset!",
+    "\x1b[33m##\x1b[0m"
+  );
+
+  cleanup();
 };
 
-const headers = ["id", "no", "en", "code", "la"];
+const init = (type: "document" | "catch", batch: number) => {
+  const output_stream = format({ headers: true });
+  const write_stream = fs.createWriteStream(`./tmp/${type}${batch}.csv`);
+  output_stream.pipe(write_stream);
+  return output_stream;
+};
 
-export const readSpecies = () => {
-  const res: any = [];
-  fs.createReadStream(`./assets/art_koder_full.csv`)
-    .pipe(csv({ separator: ";" }))
-    .on("data", (line: any) => {
-      const data: any = {};
-      const keys = Object.keys(line);
-      for (let i = 0; i < keys.length; i++) {
-        if (headers[i] == "id") {
-          data[headers[i]] = parseInt(line[keys[i]]).toString();
-        } else {
-          data[headers[i]] = line[keys[i]];
+export const readAndWriteBatches = (file: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    let index = 0;
+    let batch = 0;
+
+    const input_stream = fs.createReadStream(`./assets/${file}`);
+    let document_stream: CsvFormatterStream<any, any>;
+    let catch_stream: CsvFormatterStream<any, any>;
+
+    input_stream
+      .pipe(parse({ delimiter: ";", headers: true }))
+      .on("error", (err) => reject(err))
+      .on("data", (line) => {
+        if (index % BATCH_COUNT == 0) {
+          console.log(`Starting read and write for batch ${batch}`);
+          document_stream = init("document", batch);
+          catch_stream = init("catch", batch);
+          batch++;
         }
-      }
-      if (data.code != "") {
-        res.push(data);
-      }
-    })
-    .on("end", async () => {
-      const prisma = new PrismaClient();
-      await prisma.$connect();
 
-      const count = await prisma.species.createMany({
-        data: res,
-        skipDuplicates: true,
+        const formatted = readLine(line);
+
+        document_stream.write(formatted.document);
+        catch_stream.write(formatted.catch);
+
+        index++;
+      })
+      .on("end", (count: number) => {
+        document_stream.end();
+        catch_stream.end();
+        console.log(
+          "\x1b[33m##\x1b[0m",
+          `Completed read and write for ${count} rows`,
+          "\x1b[33m##\x1b[0m"
+        );
+        resolve();
       });
-
-      console.log("Added species", count.count);
-    });
-};
-
-export const readOther = () => {
-  const res: any = [];
-  fs.createReadStream(`./assets/quota.csv`)
-    .pipe(csv({ separator: ";" }))
-    .on("data", (line: any) => {
-      const data: any = {};
-      const keys = Object.keys(line);
-      for (let i = 0; i < keys.length; i++) {
-        data[headers[i]] = line[keys[i]];
-      }
-      if (data.code != "") {
-        res.push(data);
-      }
-    })
-    .on("end", async () => {
-      const prisma = new PrismaClient();
-      await prisma.$connect();
-
-      const count = await prisma.quota.createMany({
-        data: res,
-        skipDuplicates: true,
-      });
-
-      console.log("Added other", count.count);
-    });
+  });
 };

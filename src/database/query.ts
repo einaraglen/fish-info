@@ -8,7 +8,7 @@ export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
   return await prisma.document.findMany({
     where: {
       vessel_id: vessel.id,
-      sale_date: {
+      landing_date: {
         lte: new Date(to).toISOString(),
         gte: new Date(from).toISOString(), 
       },
@@ -37,16 +37,16 @@ export const getCatches = async ({ document }: CatchesQuery) => {
 export const getDatabaseRange = async () => {
   const range =  await prisma.document.aggregate({
     _min: {
-      sale_date: true
+      landing_date: true
     },
     _max: {
-      sale_date: true
+      landing_date: true
     }
   })
 
   const { _min, _max } = range
 
-  return { min: _min.sale_date, max: _max.sale_date }
+  return { min: _min.landing_date, max: _max.landing_date }
 }
 
 export const getOrCreateVessel = async (imo: string) => {
