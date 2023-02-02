@@ -7,25 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Log {
+  id         String   @id @unique @default(uuid())
+  ip         String
+  endpoint   String
+  created_at DateTime @default(now())
+}
+
 model Document {
   id              String    @id @unique // Dokumentnummer
+  sale_date       DateTime // Dokument salgsdato
   last_catch_date DateTime // Siste fangstdato
   landing_date    DateTime // Landingsdato
   lat             Float // Lat (hovedområde)
   lon             Float // Lon (hovedområde)
   type            Type      @relation(fields: [type_id], references: [id])
   type_id         String // Dokumenttype (kode)
-  equipment        Equipment @relation(fields: [eqiupment_id], references: [id])
+  equipment       Equipment @relation(fields: [eqiupment_id], references: [id])
   eqiupment_id    String // Redskap (kode)
   receive_nation  String // Mottakernasjonalitet (kode)
   receive_place   String // Landingskommune
   vessel_id       String // Fartøy ID
   quota           Quota     @relation(fields: [quota_id], references: [id])
   quota_id        String //  Kvotetype (kode)
-  catches         Catch[]
+  lines           Line[]
 }
 
-model Catch {
+model Line {
   id              String       @id @unique
   document        Document     @relation(fields: [document_id], references: [id])
   document_id     String // Dokumentnummer
@@ -43,12 +51,12 @@ model Vessel {
 }
 
 model Species {
-  id      String  @id @unique
-  code    String
-  no      String
-  en      String
-  la      String
-  catches Catch[]
+  id    String @id @unique
+  code  String
+  no    String
+  en    String
+  la    String
+  lines Line[]
 }
 
 model Equipment {
@@ -73,8 +81,8 @@ model Quota {
 }
 
 model Conservation {
-  id      String  @id @unique
-  no      String
-  en      String
-  catches Catch[]
+  id    String @id @unique
+  no    String
+  en    String
+  lines Line[]
 }

@@ -15,10 +15,8 @@ export const DocumentsQueryObject = z.object({
 
 export type DocumentsQuery = z.infer<typeof DocumentsQueryObject>;
 
-export const CatchesQueryObject = z.object({
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    document: z.string().optional()
+export const DocumentQueryObject = z.object({
+    id: z.string().optional()
 })
 
-export type CatchesQuery = z.infer<typeof CatchesQueryObject>
+export type DocumentQuery = z.infer<typeof DocumentQueryObject>

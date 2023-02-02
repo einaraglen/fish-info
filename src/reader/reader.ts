@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { Catch, Document } from "@prisma/client";
+import { Line, Document } from "@prisma/client";
 import { parse, format, CsvFormatterStream } from "fast-csv";
 import { readLine } from "./utils";
 import prisma from "../database/client";
@@ -48,7 +48,7 @@ const insertCatches = (catches: any[]): Promise<void> => {
     let cursor = 0;
 
     while (cursor < catches.length) {
-      const cat = await prisma.catch.createMany({
+      const cat = await prisma.line.createMany({
         data: catches.slice(cursor, cursor + SECTION_COUNT),
         skipDuplicates: true,
       });
@@ -116,7 +116,7 @@ const formatCatch = (line: any) => {
   };
 };
 
-const readFormattedCatches = (batch: number): Promise<Catch[]> => {
+const readFormattedCatches = (batch: number): Promise<Line[]> => {
   return new Promise((resolve, reject) => {
     const catches: any = [];
 

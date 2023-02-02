@@ -1,14 +1,13 @@
 import getVessel from "../directory/vessels";
-import { z } from "zod";
 import prisma from "./client";
-import { CatchesQuery, DocumentsQuery, VesselQuery } from "../v1/models"
+import { DocumentsQuery, VesselQuery } from "../v1/models"
 
 export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
   const vessel = await getOrCreateVessel(imo);
   return await prisma.document.findMany({
     where: {
       vessel_id: vessel.id,
-      landing_date: {
+      sale_date: {
         lte: new Date(to).toISOString(),
         gte: new Date(from).toISOString(), 
       },
@@ -21,32 +20,19 @@ export const getDocuments = async ({ imo, from, to }: DocumentsQuery) => {
   });
 };
 
-export const getCatches = async ({ document }: CatchesQuery) => {
-  return await prisma.catch.findMany({
-    where: {
-      document_id: document
-    },
-    include: {
-      species: true,
-      conservation: true
-    }
-  })
-}
-
-
 export const getDatabaseRange = async () => {
   const range =  await prisma.document.aggregate({
     _min: {
-      landing_date: true
+      sale_date: true
     },
     _max: {
-      landing_date: true
+      sale_date: true
     }
   })
 
   const { _min, _max } = range
 
-  return { min: _min.landing_date, max: _max.landing_date }
+  return { min: _min.sale_date, max: _max.sale_date }
 }
 
 export const getOrCreateVessel = async (imo: string) => {
@@ -82,4 +68,13 @@ export const getVesselByIdentifier = async ({ imo, id }: VesselQuery) => {
 
   const where = imo ? { imo } : { id }
   return await prisma.vessel.findUnique({ where })
+}
+
+export const createLog = async ({ ip, endpoint }: { ip: string, endpoint: string }) => {
+  return await prisma.log.create({
+    data: {
+      ip,
+      endpoint
+    }
+  })
 }

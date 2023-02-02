@@ -1,8 +1,7 @@
-import { Catch, Document } from "@prisma/client";
+import { Line, Document } from "@prisma/client";
 
 export const readStringToDate = (line: any, key: string) => {
   if (line[key] == null || line[key] == "") {
-    // console.log(line)
     throw new Error(`Bad String when parsing Date for key "${key}"`);
   }
 
@@ -52,9 +51,17 @@ export const readCatchId = (line: any) => {
   )}-${fao == "" ? "UKN" : fao}`;
 };
 
-export const readLine = (data: any): { document: any; catch: Catch } => {
+const readSaleDate = (line: any): string => {
+  try {
+    return readStringToDate(line, "Dokument salgsdato").toISOString()
+  } catch (e) {
+    // Bad sales date, user landing instead
+    return readStringToDate(line, "Landingsdato").toISOString()
+  }
+}
+
+export const readLine = (data: any): { document: any; catch: Line } => {
   const document: string = readString(data, "Dokumentnummer");
-  let species_id = readStringToInt(data, "Art - FDIR (kode)").toString();
 
   if (document == null) {
     throw new Error(`Bad Document ID ${document}`);
@@ -65,6 +72,7 @@ export const readLine = (data: any): { document: any; catch: Catch } => {
       id: document,
       lat: readStringToFloat(data, "Lat (hovedområde)"),
       lon: readStringToFloat(data, "Lon (hovedområde)"),
+      sale_date: readSaleDate(data),
       last_catch_date: readStringToDate(data, "Siste fangstdato").toISOString(),
       landing_date: readStringToDate(data, "Landingsdato").toISOString(),
       type_id: readString(data, "Dokumenttype (kode)"),
@@ -77,7 +85,7 @@ export const readLine = (data: any): { document: any; catch: Catch } => {
     catch: {
       id: readCatchId(data),
       document_id: document,
-      species_id,
+      species_id: readStringToInt(data, "Art - FDIR (kode)").toString(),
       conservation_id: readString(data, "Konserveringsmåte (kode)"),
       product_weight: readStringToFloat(data, "Bruttovekt"),
       round_weight: readStringToFloat(data, "Rundvekt"),

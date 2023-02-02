@@ -1,6 +1,6 @@
 import express from "express";
-import { getCatches, getDocuments, getVesselByIdentifier } from "../database/query";
-import { CatchesQueryObject, DocumentsQueryObject, VesselQueryObject } from "./models";
+import { getDocuments, getVesselByIdentifier } from "../database/query";
+import { DocumentsQueryObject, VesselQueryObject } from "./models";
 
 const route = express.Router({ mergeParams: true })
 
@@ -10,7 +10,7 @@ route.get("/vessel", async (req, res) => {
         const vessel = await getVesselByIdentifier(payload)
         res.send(vessel)
     } catch (e) {
-        res.status(500).send(e)
+        res.status(500).send(e.message || "Internal Error")
     }
 })
 
@@ -20,17 +20,7 @@ route.get("/documents", async (req, res) => {
         const documents = await getDocuments(payload)
         res.send(documents)
     } catch (e) {
-        res.status(500).send(e)
-    }
-})
-
-route.get("/catches", async (req, res) => {
-    try { 
-        const payload = CatchesQueryObject.parse(req.query)
-        const catches = await getCatches(payload)
-        res.send(catches)
-    } catch (e) {
-        res.status(500).send(e)
+        res.status(500).send(e.message || "Internal Error")
     }
 })
 
